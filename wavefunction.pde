@@ -2,36 +2,85 @@
 float a_0 = 0.01;
 //Atomic number
 int Z = 1;
-int N = 7, L = 3, M = 1;
+int N = 4, L = 0, M = 0;
 
 float[][] densities;
+float[][] notSquaredDensities;
 float totalProbability = 0;
 float max = 0;
+
+int location(int n, int l, int m){
+  return n * (n - 1) * (2 * n - 1) / 6 + l * (l + 1) + m;
+}
+
 void setup(){
   size(800, 800, P2D);
   background(30);
   
-  densities = new float[width][height];
-  totalProbability = 0;
+  int maxN = 1;
+  int totalWeights = (maxN * (maxN + 1) * (2 * maxN + 1)) / 6;
+  String combined = "float weights[" + totalWeights + "] = float[" + totalWeights + "](";
+  int index = 0;
+  for(int n = 1; n <= maxN; n++){
+    for(int l = 0; l < n; l++){
+      for(int m = -l; m <= l; m++){
+        index++;
+        densities = new float[width][height];
+        totalProbability = 0;
+        for(int x = 0; x < width; x++){
+          densities[x] = new float[height];
+          for(int y = 0; y < height; y++){
+            float plotX = x - width / 2;
+            float plotY = y - height / 2;
+            float r = sqrt(pow(plotX, 2) + pow(plotY, 2)) / 500.0;
+            float theta = atan2(y - height / 2, x - width / 2) + HALF_PI;
+            float phi = frameCount / 50.0;
+            float waveFunction = waveFunction(n, l, m, r, theta, phi);
+            float probabilityDensity = pow(waveFunction, 2);
+            if(probabilityDensity != probabilityDensity)
+              continue;
+            
+            max = max(max, min(probabilityDensity, 100));
+            totalProbability += min(probabilityDensity, 100);
+            densities[x][y] = probabilityDensity;
+          }
+        }
+        if(n != 1)
+          combined += ", ";
+        combined += str(min(round(totalProbability * 100) / 100.0, 500000));
+        //println("Max: ", max);
+        //println("For n: ", n, ", l: ", l, " and m: ", m, " the total probability is ", totalProbability);
+        //println("For index: ", index, " the location is ", location(n, l, m));
+      }
+    }
+  }
+  combined += ");";
+  //println(combined);
+  notSquaredDensities = new float[width][height];
   for(int x = 0; x < width; x++){
+    notSquaredDensities[x] = new float[height];
     densities[x] = new float[height];
     for(int y = 0; y < height; y++){
       float plotX = x - width / 2;
       float plotY = y - height / 2;
       float r = sqrt(pow(plotX, 2) + pow(plotY, 2)) / 500.0;
-      float theta = atan2(y - height / 2, x - width / 2) + HALF_PI;
+      float theta = atan2(plotX, plotY);
       float phi = frameCount / 50.0;
       float waveFunction = waveFunction(N, L, M, r, theta, phi);
-      float probabilityDensity = pow(abs(waveFunction), 2);
+      float probabilityDensity = pow(waveFunction, 2);
+      
       if(probabilityDensity != probabilityDensity)
         continue;
       
-      max = max(max, probabilityDensity);
-      totalProbability += probabilityDensity;
+      max = max(max, min(probabilityDensity, 100));
+      totalProbability += min(probabilityDensity, 100);
       densities[x][y] = probabilityDensity;
+      notSquaredDensities[x][y] = waveFunction;
+      if(SphericalHarmonics(L, M, theta, phi).x < 0)
+        notSquaredDensities[x][y] *= -1;
     }
   }
-  println("total:" + totalProbability);
+  //println("total:" + totalProbability);
   for(int x = 0; x < width; x++){
     for(int y = 0; y < height; y++){
       densities[x][y] /= totalProbability;
@@ -43,7 +92,10 @@ void setup(){
 void draw(){
   for(int x = 0; x < width; x++){
     for(int y = 0; y < height; y++){
-      set(x, y, color(densities[x][y] * 255 * 5000));
+      if(notSquaredDensities[x][y] < 0)
+        set(x, y, color(0, 0, densities[x][y] * 255 * 5000));
+      else
+        set(x, y, color(densities[x][y] * 255 * 5000, 0, 0));
     }
   }
   
@@ -62,13 +114,12 @@ void draw(){
   float distance = 0;
   float absorptionCoefficient = 500;
   noStroke();
-  for(int i = 0; i < line.mag() / stepSize; i++){
+  for(int i = 1; i < line.mag() / stepSize; i++){
     PVector pos = start.copy().add(line.copy().normalize().mult(stepSize * i));
     PVector prevPos = start.copy().add(line.copy().normalize().mult(stepSize * (i - 1)));
     distance += (densities[(int)pos.x][(int)pos.y] + densities[(int)prevPos.x][(int)prevPos.y]) / 2.0 * stepSize;
     float localAbsorption = exp(-distance * absorptionCoefficient);
     fill(localAbsorption * 255);
-    println(localAbsorption);
     circle(pos.x, pos.y, stepSize);
   }
   float absorption = exp(-distance * absorptionCoefficient);
@@ -103,8 +154,7 @@ float waveFunction(int n, int l, int m, float r, float theta, float phi){
   float laguerre = LaguerrePolynomial(n - l - 1, 2 * l + 1, rho);
   PVector harmonics = SphericalHarmonics(l, m, theta, phi);
   
-  float out = underSquareRoot * exponentials * laguerre * harmonics.magSq();
-  return out;
+  return harmonics.mag() * underSquareRoot * exponentials * laguerre;
 }
 
 //https://en.wikipedia.org/wiki/Laguerre_polynomials
